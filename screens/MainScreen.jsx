@@ -1,15 +1,19 @@
-import React, { useState, useEffect } from 'react';
+
+
+import React, { useEffect, useState } from 'react';  // Added useState to imports
 import { 
   View, 
   Text, 
   Image, 
-  TouchableOpacity, 
+  TouchableOpacity,
+  ActivityIndicator,
   StyleSheet,
-  Dimensions,
-  ActivityIndicator 
+  Dimensions 
 } from 'react-native';
 import { Audio } from 'expo-av';
 import Slider from '@react-native-community/slider';
+import { Ionicons } from '@expo/vector-icons';
+import { useAppContext } from '../AppContext';
 
 const tracks = [
   {
@@ -19,17 +23,19 @@ const tracks = [
     imageUrl: 'https://i.postimg.cc/MGH5szG2/GB-Cover.jpg',
     audioUrl: 'https://dl.sndup.net/jt2qj/CLV%201.mp3'
   },
+  {
+    id: '2',
+    title: '02. Girl Like U',
+    artist: 'Kaleab Samuel & Paris Williams',
+    imageUrl: 'https://i.postimg.cc/MGH5szG2/GB-Cover.jpg',
+    audioUrl: 'https://dl.sndup.net/cjfx7/02%20Girl%20Like%20U%20Clean.mp3'
+  },
 ];
 
 export default function MainScreen({ switchView }) {
-  const [sound, setSound] = useState();
-  const [isPlaying, setIsPlaying] = useState(false);
+  const { playbackState, setPlaybackState } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
-  const [currentTrack, setCurrentTrack] = useState(tracks[0]);
-  const [position, setPosition] = useState(0);
-  const [duration, setDuration] = useState(0);
 
-  // Format time function
   const formatTime = (milliseconds) => {
     const totalSeconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -54,28 +60,38 @@ export default function MainScreen({ switchView }) {
 
     setupAudio();
 
+    // Initialize current track if not set
+    if (!playbackState.currentTrack) {
+      setPlaybackState(prev => ({
+        ...prev,
+        currentTrack: tracks[0]
+      }));
+    }
+
     return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
+      // Don't unload the sound when component unmounts
+      // This allows the music to keep playing when switching screens
     };
   }, []);
 
   async function loadAndPlaySound() {
     try {
       setIsLoading(true);
-      if (sound) {
-        await sound.unloadAsync();
+      if (playbackState.sound) {
+        await playbackState.sound.unloadAsync();
       }
 
       const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: currentTrack.audioUrl },
-        { shouldPlay: true },
+        { uri: playbackState.currentTrack.audioUrl },
+        { shouldPlay: true, positionMillis: playbackState.position },
         onPlaybackStatusUpdate
       );
 
-      setSound(newSound);
-      setIsPlaying(true);
+      setPlaybackState(prev => ({
+        ...prev,
+        sound: newSound,
+        isPlaying: true
+      }));
       setIsLoading(false);
     } catch (error) {
       console.error('Error loading sound:', error);
@@ -85,23 +101,26 @@ export default function MainScreen({ switchView }) {
 
   function onPlaybackStatusUpdate(status) {
     if (status.isLoaded) {
-      setPosition(status.positionMillis);
-      setDuration(status.durationMillis);
-      setIsPlaying(status.isPlaying);
+      setPlaybackState(prev => ({
+        ...prev,
+        position: status.positionMillis,
+        duration: status.durationMillis,
+        isPlaying: status.isPlaying
+      }));
     }
   }
 
   async function playPause() {
     try {
-      if (!sound) {
+      if (!playbackState.sound) {
         await loadAndPlaySound();
         return;
       }
 
-      if (isPlaying) {
-        await sound.pauseAsync();
+      if (playbackState.isPlaying) {
+        await playbackState.sound.pauseAsync();
       } else {
-        await sound.playAsync();
+        await playbackState.sound.playAsync();
       }
     } catch (error) {
       console.error('Error playing/pausing:', error);
@@ -109,11 +128,12 @@ export default function MainScreen({ switchView }) {
   }
 
   async function seekTo(value) {
-    if (sound) {
-      await sound.setPositionAsync(value);
+    if (playbackState.sound) {
+      await playbackState.sound.setPositionAsync(value);
     }
   }
 
+  // Rest of the JSX remains the same, just update the state references
   return (
     <View style={styles.container}>
       <TouchableOpacity 
@@ -125,32 +145,36 @@ export default function MainScreen({ switchView }) {
 
       <View style={styles.trackInfo}>
         <Image
-          source={{ uri: currentTrack.imageUrl }}
+          source={{ uri: playbackState.currentTrack?.imageUrl }}
           style={styles.albumArt}
         />
-        <Text style={styles.title}>{currentTrack.title}</Text>
-        <Text style={styles.artist}>{currentTrack.artist}</Text>
+        <Text style={styles.title}>{playbackState.currentTrack?.title}</Text>
+        <Text style={styles.artist}>{playbackState.currentTrack?.artist}</Text>
         
-        {/* Progress Bar */}
         <View style={styles.progressContainer}>
-          <Text style={styles.timeText}>{formatTime(position)}</Text>
+          <Text style={styles.timeText}>{formatTime(playbackState.position)}</Text>
           <Slider
             style={styles.progressBar}
-            value={position}
+            value={playbackState.position}
             minimumValue={0}
-            maximumValue={duration}
+            maximumValue={playbackState.duration}
             onSlidingComplete={seekTo}
-            minimumTrackTintColor="#f4511e"
-            maximumTrackTintColor="#d3d3d3"
-            thumbTintColor="#f4511e"
+            minimumTrackTintColor="#1DB954"
+            maximumTrackTintColor="rgba(0,0,0,0.1)"
+            thumbTintColor="#1DB954"
           />
-          <Text style={styles.timeText}>{formatTime(duration)}</Text>
+          <Text style={styles.timeText}>{formatTime(playbackState.duration)}</Text>
         </View>
       </View>
 
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.controlButton}>
-          <Text style={styles.controlText}>⏮️</Text>
+        <TouchableOpacity 
+          style={styles.controlButton}
+          onPress={() => {/* Add previous track logic */}}
+        >
+          <View style={styles.iconContainer}>
+            <Ionicons name="play-skip-back-sharp" size={35} color="#000" />
+          </View>
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -158,95 +182,29 @@ export default function MainScreen({ switchView }) {
           onPress={playPause}
           disabled={isLoading}
         >
-          {isLoading ? (
-            <ActivityIndicator size="large" color="#000" />
-          ) : (
-            <Text style={styles.playButtonText}>
-              {isPlaying ? '⏸️' : '▶️'}
-            </Text>
-          )}
+          <View style={styles.playButtonContainer}>
+            {isLoading ? (
+              <ActivityIndicator size="large" color="#FFF" />
+            ) : (
+              <Ionicons 
+                name={playbackState.isPlaying ? "pause" : "play"} 
+                size={40} 
+                color="#FFF"
+                style={[styles.playIcon, { marginLeft: playbackState.isPlaying ? 0 : 3 }]}
+              />
+            )}
+          </View>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.controlButton}>
-          <Text style={styles.controlText}>⏭️</Text>
+        <TouchableOpacity 
+          style={styles.controlButton}
+          onPress={() => {/* Add next track logic */}}
+        >
+          <View style={styles.iconContainer}>
+            <Ionicons name="play-skip-forward-sharp" size={35} color="#000" />
+          </View>
         </TouchableOpacity>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 20,
-    paddingTop: 50,
-  },
-  playlistButton: {
-    alignSelf: 'flex-end',
-    padding: 10,
-    backgroundColor: '#eee',
-    borderRadius: 20,
-  },
-  playlistButtonText: {
-    fontSize: 16,
-  },
-  trackInfo: {
-    alignItems: 'center',
-    width: '100%', // Added to ensure proper slider width
-  },
-  albumArt: {
-    width: Dimensions.get('window').width - 80,
-    height: Dimensions.get('window').width - 80,
-    borderRadius: 20,
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  artist: {
-    fontSize: 18,
-    color: '#666',
-    marginBottom: 20,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    paddingHorizontal: 10,
-  },
-  progressBar: {
-    flex: 1,
-    marginHorizontal: 10,
-  },
-  timeText: {
-    fontSize: 12,
-    color: '#666',
-    width: 40,
-    textAlign: 'center',
-  },
-  controls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    paddingBottom: 40,
-  },
-  controlButton: {
-    padding: 20,
-  },
-  controlText: {
-    fontSize: 24,
-  },
-  playButton: {
-    padding: 20,
-    marginHorizontal: 30,
-  },
-  playButtonText: {
-    fontSize: 40,
-  },
-});
